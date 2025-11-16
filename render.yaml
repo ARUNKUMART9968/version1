@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: botic-api
+    env: docker
+    plan: free
+    healthCheckPath: /health
+    
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ASPNETCORE_URLS
+        value: http://0.0.0.0:$PORT
+      - key: Jwt__Key
+        value: BoticDemo_SuperSecretKeyThatIsAtLeast32CharactersLongForSecurity!@#
+      - key: Jwt__Issuer
+        value: BoticDemo
+      - key: Jwt__Audience
+        value: BoticUsers
+      - key: Jwt__ExpireMinutes
+        value: "1440"
+      - key: Bot__MinSecondsInStage
+        value: "10"
+      - key: ConnectionStrings__DefaultConnection
+        fromDatabase:
+          name: botic-postgres-db
+          property: connectionString
+
+databases:
+  - name: botic-postgres-db
+    engine: postgres
+    version: 15
+    plan: free

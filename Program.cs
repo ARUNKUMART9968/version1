@@ -35,7 +35,7 @@ builder.Services.AddAuthentication(x =>
 })
 .AddJwtBearer(x =>
 {
-    x.RequireHttpsMetadata = false;
+    x.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
     x.SaveToken = true;
     x.TokenValidationParameters = new TokenValidationParameters
     {
@@ -101,11 +101,11 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// Handle PORT for production (Railway)
-if (builder.Environment.IsProduction())
+// Handle PORT for production (Render, Railway, and other platforms)
+if (!builder.Environment.IsDevelopment())
 {
     var portVar = Environment.GetEnvironmentVariable("PORT");
-    if (portVar is { Length: > 0 } && int.TryParse(portVar, out var port))
+    if (!string.IsNullOrEmpty(portVar) && int.TryParse(portVar, out var port))
     {
         builder.WebHost.ConfigureKestrel(options =>
         {
@@ -116,7 +116,7 @@ if (builder.Environment.IsProduction())
 
 var app = builder.Build();
 
-// If behind Railway or other proxy:
+// If behind Render or other proxy:
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
@@ -134,8 +134,11 @@ app.Use(async (context, next) =>
     await next();
 });
 
-// HTTPS redirect early (optional but recommended)
-app.UseHttpsRedirection();
+// HTTPS redirect early (optional but recommended for production)
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 // MUST call UseRouting() before UseCors and before authentication/authorization
 app.UseRouting();
@@ -158,7 +161,7 @@ app.Use(async (context, next) =>
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Swagger (visible in dev/prod per your existing condition)
+// Swagger (visible in dev and prod)
 if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
     app.UseSwagger();
@@ -172,7 +175,16 @@ if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 // Map controllers / endpoints
 app.MapControllers();
 
-// Database initialization (keep your existing code)
+// Health check endpoint for Render
+app.MapGet("/health", () =>
+{
+    return Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow });
+})
+.WithName("Health")
+.WithOpenApi()
+.AllowAnonymous();
+
+// Database initialization
 try
 {
     using (var scope = app.Services.CreateScope())
@@ -184,17 +196,41 @@ try
         if (string.IsNullOrEmpty(connectionString))
         {
             logger.LogError("❌ CONNECTION STRING IS NULL!");
-            logger.LogError("Make sure 'ConnectionStrings__DefaultConnection' is set in Railway Variables");
+            logger.LogError("Make sure 'ConnectionStrings__DefaultConnection' is set in environment variables");
             logger.LogError("Current environment: {environment}", app.Environment.EnvironmentName);
+
+            if (!app.Environment.IsProduction())
+            {
+                throw new InvalidOperationException("Database connection string is required");
+            }
         }
         else
         {
             logger.LogInformation("✅ Connection string found");
             logger.LogInformation("Applying database migrations...");
-            dbContext.Database.Migrate();
+
+            try
+            {
+                dbContext.Database.Migrate();
+                logger.LogInformation("✅ Database migrations applied successfully");
+            }
+            catch (Exception migrationEx)
+            {
+                logger.LogError(migrationEx, "❌ Database migration failed");
+                throw;
+            }
 
             logger.LogInformation("Seeding database...");
-            SeedData.Initialize(dbContext);
+            try
+            {
+                SeedData.Initialize(dbContext);
+                logger.LogInformation("✅ Database seeding completed successfully");
+            }
+            catch (Exception seedEx)
+            {
+                logger.LogError(seedEx, "❌ Database seeding failed");
+                throw;
+            }
 
             logger.LogInformation("✅ Database initialization completed successfully");
         }
@@ -204,9 +240,14 @@ catch (Exception ex)
 {
     var logger = app.Services.GetRequiredService<ILogger<Program>>();
     logger.LogError(ex, "❌ An error occurred during database initialization");
+
     if (!app.Environment.IsProduction())
     {
         throw;
+    }
+    else
+    {
+        logger.LogError("Application will continue but database may not be properly initialized");
     }
 }
 
