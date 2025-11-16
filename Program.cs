@@ -53,7 +53,21 @@ builder.Services.AddAuthentication(x =>
     };
 });
 
-// Add Controllers
+// === CORS =========================================
+// Adjust the origin to exactly match your frontend origin (scheme + host + port)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("LocalDevPolicy", policy =>
+    {
+        policy
+            .WithOrigins("http://127.0.0.1:5500") // <-- exact origin of your frontend
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials(); // only use if you need cookies/credentials
+    });
+});
+// ==================================================
+
 builder.Services.AddControllers();
 
 // Add Swagger/OpenAPI
@@ -105,9 +119,15 @@ if (app.Environment.IsDevelopment())
     });
 }
 
+// IMPORTANT: ensure routing + CORS are in the right order
 app.UseHttpsRedirection();
+
+app.UseRouting();                // <--- must come before UseCors / UseAuthentication
+app.UseCors("LocalDevPolicy");   // <--- CORS middleware applied here
+
 app.UseAuthentication();
 app.UseAuthorization();
+
 app.MapControllers();
 
 // Initialize Database

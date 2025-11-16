@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using BoticAPI.Services;
 using BoticAPI.DTOs;
+using BoticAPI.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace BoticAPI.Controllers
 {
@@ -12,10 +14,12 @@ namespace BoticAPI.Controllers
     public class ApplicationsController : ControllerBase
     {
         private readonly IApplicationService _applicationService;
+        private readonly BoticDbContext _context;
 
-        public ApplicationsController(IApplicationService applicationService)
+        public ApplicationsController(IApplicationService applicationService, BoticDbContext context)
         {
             _applicationService = applicationService;
+            _context = context;
         }
 
         private int GetUserId()
@@ -26,6 +30,11 @@ namespace BoticAPI.Controllers
         private string GetUserEmail()
         {
             return User.FindFirst(ClaimTypes.Email)?.Value ?? "";
+        }
+
+        private string GetUserRole()
+        {
+            return User.FindFirst(ClaimTypes.Role)?.Value ?? "";
         }
 
         /// <summary>
@@ -58,6 +67,33 @@ namespace BoticAPI.Controllers
         public async Task<IActionResult> GetApplication(int id)
         {
             var userId = GetUserId();
+            var userRole = GetUserRole();
+
+            // ✅ FIXED: Allow Admin and Bot to view any application
+            if (userRole == "Admin" || userRole == "Bot")
+            {
+                var adminApp = await _context.Applications
+                    .Include(a => a.Applicant)
+                    .Include(a => a.RoleApplied)
+                    .FirstOrDefaultAsync(a => a.Id == id);
+
+                if (adminApp == null)
+                {
+                    return NotFound(new { message = "Application not found" });
+                }
+
+                return Ok(new
+                {
+                    adminApp.Id,
+                    adminApp.CurrentStatus,
+                    adminApp.CreatedAt,
+                    RoleApplied = adminApp.RoleApplied.Name,
+                    Applicant = adminApp.Applicant.Name,
+                    ApplicantEmail = adminApp.Applicant.Email
+                });
+            }
+
+            // Applicant can only view their own applications
             var app = await _applicationService.GetApplicationAsync(id, userId);
 
             if (app == null)
@@ -122,6 +158,23 @@ namespace BoticAPI.Controllers
         [HttpGet("{id}/activity-logs")]
         public async Task<IActionResult> GetActivityLogs(int id)
         {
+            var userId = GetUserId();
+            var userRole = GetUserRole();
+
+            // ✅ FIXED: Verify user has access to this application
+            var app = await _context.Applications.FirstOrDefaultAsync(a => a.Id == id);
+
+            if (app == null)
+            {
+                return NotFound(new { message = "Application not found" });
+            }
+
+            // Only allow applicant to view their own activity logs, or Admin/Bot to view any
+            if (userRole != "Admin" && userRole != "Bot" && app.ApplicantId != userId)
+            {
+                return Forbid();
+            }
+
             var logs = await _applicationService.GetApplicationActivityLogsAsync(id);
 
             return Ok(logs.Select(l => new

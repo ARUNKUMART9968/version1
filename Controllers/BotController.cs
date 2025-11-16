@@ -49,6 +49,7 @@ namespace BoticAPI.Controllers
         /// Get bot job status and results
         /// </summary>
         [HttpGet("jobs/{id}")]
+        [Authorize(Roles = "Admin,Bot")]  // ✅ FIXED: Added authorization
         public async Task<IActionResult> GetBotJob(int id)
         {
             var job = await _context.BotJobs.FirstOrDefaultAsync(j => j.Id == id);

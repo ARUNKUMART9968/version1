@@ -34,19 +34,27 @@ namespace BoticAPI.Controllers
         [HttpPost("roles")]
         public async Task<IActionResult> CreateRole([FromBody] CreateRoleRequest request)
         {
+            // ✅ FIXED: Add input validation and sanitization
             if (string.IsNullOrWhiteSpace(request.Name))
             {
                 return BadRequest(new { message = "Role name is required" });
             }
 
-            if (await _context.Roles.AnyAsync(r => r.Name == request.Name))
+            var roleName = request.Name.Trim();
+
+            if (roleName.Length < 2 || roleName.Length > 200)
+            {
+                return BadRequest(new { message = "Role name must be between 2 and 200 characters" });
+            }
+
+            if (await _context.Roles.AnyAsync(r => r.Name == roleName))
             {
                 return BadRequest(new { message = "Role already exists" });
             }
 
             var role = new Role
             {
-                Name = request.Name,
+                Name = roleName,
                 IsTechnical = request.IsTechnical
             };
 
@@ -57,15 +65,27 @@ namespace BoticAPI.Controllers
         }
 
         /// <summary>
-        /// Get all non-technical applications
+        /// Get all non-technical applications with pagination
         /// </summary>
         [HttpGet("applications")]
-        public async Task<IActionResult> GetAllApplications()
+        public async Task<IActionResult> GetAllApplications([FromQuery] int skip = 0, [FromQuery] int take = 50)
         {
+            // ✅ FIXED: Add pagination parameters
+            if (skip < 0 || take < 1 || take > 500)
+            {
+                return BadRequest(new { message = "Invalid pagination parameters. Skip must be >= 0, Take must be between 1-500" });
+            }
+
+            var totalCount = await _context.Applications
+                .CountAsync(a => !a.RoleApplied.IsTechnical);
+
             var apps = await _context.Applications
                 .Include(a => a.RoleApplied)
                 .Include(a => a.Applicant)
                 .Where(a => !a.RoleApplied.IsTechnical)
+                .OrderByDescending(a => a.CreatedAt)
+                .Skip(skip)
+                .Take(take)
                 .Select(a => new
                 {
                     a.Id,
@@ -77,7 +97,14 @@ namespace BoticAPI.Controllers
                 })
                 .ToListAsync();
 
-            return Ok(apps);
+            return Ok(new
+            {
+                totalCount,
+                count = apps.Count,
+                skip,
+                take,
+                data = apps
+            });
         }
 
         /// <summary>
@@ -117,13 +144,24 @@ namespace BoticAPI.Controllers
         }
 
         /// <summary>
-        /// Get all system users
+        /// Get all system users with pagination
         /// </summary>
         [HttpGet("users")]
-        public async Task<IActionResult> GetAllUsers()
+        public async Task<IActionResult> GetAllUsers([FromQuery] int skip = 0, [FromQuery] int take = 50)
         {
+            // ✅ FIXED: Add pagination
+            if (skip < 0 || take < 1 || take > 500)
+            {
+                return BadRequest(new { message = "Invalid pagination parameters" });
+            }
+
+            var totalCount = await _context.Users.CountAsync();
+
             var users = await _context.Users
                 .Include(u => u.Role)
+                .OrderBy(u => u.Id)
+                .Skip(skip)
+                .Take(take)
                 .Select(u => new
                 {
                     u.Id,
@@ -133,7 +171,14 @@ namespace BoticAPI.Controllers
                 })
                 .ToListAsync();
 
-            return Ok(users);
+            return Ok(new
+            {
+                totalCount,
+                count = users.Count,
+                skip,
+                take,
+                data = users
+            });
         }
 
         /// <summary>
@@ -156,14 +201,25 @@ namespace BoticAPI.Controllers
         }
 
         /// <summary>
-        /// Get all applications (technical and non-technical)
+        /// Get all applications (technical and non-technical) with pagination
         /// </summary>
         [HttpGet("all-applications")]
-        public async Task<IActionResult> GetAllApplicationsUnfiltered()
+        public async Task<IActionResult> GetAllApplicationsUnfiltered([FromQuery] int skip = 0, [FromQuery] int take = 50)
         {
+            // ✅ FIXED: Add pagination
+            if (skip < 0 || take < 1 || take > 500)
+            {
+                return BadRequest(new { message = "Invalid pagination parameters" });
+            }
+
+            var totalCount = await _context.Applications.CountAsync();
+
             var apps = await _context.Applications
                 .Include(a => a.RoleApplied)
                 .Include(a => a.Applicant)
+                .OrderByDescending(a => a.CreatedAt)
+                .Skip(skip)
+                .Take(take)
                 .Select(a => new
                 {
                     a.Id,
@@ -176,7 +232,14 @@ namespace BoticAPI.Controllers
                 })
                 .ToListAsync();
 
-            return Ok(apps);
+            return Ok(new
+            {
+                totalCount,
+                count = apps.Count,
+                skip,
+                take,
+                data = apps
+            });
         }
     }
 }
