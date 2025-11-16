@@ -9,7 +9,6 @@
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? LastBotRunAt { get; set; }
         public string? BotLockToken { get; set; }
-        public byte[]? RowVersion { get; set; }
 
         public User Applicant { get; set; } = null!;
         public Role RoleApplied { get; set; } = null!;

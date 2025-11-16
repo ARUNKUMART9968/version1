@@ -10,11 +10,10 @@ var builder = WebApplication.CreateBuilder(args);
 // Load configuration
 var configuration = builder.Configuration;
 
-// Add DbContext FIRST
+// Add DbContext - POSTGRESQL
 builder.Services.AddDbContext<BoticDbContext>(options =>
-    options.UseSqlServer(
-        configuration.GetConnectionString("DefaultConnection"),
-        sqlOptions => sqlOptions.CommandTimeout(300)
+    options.UseNpgsql(
+        configuration.GetConnectionString("DefaultConnection")
     )
 );
 
@@ -53,21 +52,7 @@ builder.Services.AddAuthentication(x =>
     };
 });
 
-// === CORS =========================================
-// Adjust the origin to exactly match your frontend origin (scheme + host + port)
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("LocalDevPolicy", policy =>
-    {
-        policy
-            .WithOrigins("http://127.0.0.1:5500") // <-- exact origin of your frontend
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials(); // only use if you need cookies/credentials
-    });
-});
-// ==================================================
-
+// Add Controllers
 builder.Services.AddControllers();
 
 // Add Swagger/OpenAPI
@@ -106,10 +91,23 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+// Handle PORT for production
+if (builder.Environment.IsProduction())
+{
+    var portVar = Environment.GetEnvironmentVariable("PORT");
+    if (portVar is { Length: > 0 } && int.TryParse(portVar, out var port))
+    {
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.ListenAnyIP(port);
+        });
+    }
+}
+
 var app = builder.Build();
 
 // Middleware Configuration
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
     app.UseSwagger();
     app.UseSwaggerUI(c =>
@@ -119,15 +117,9 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-// IMPORTANT: ensure routing + CORS are in the right order
 app.UseHttpsRedirection();
-
-app.UseRouting();                // <--- must come before UseCors / UseAuthentication
-app.UseCors("LocalDevPolicy");   // <--- CORS middleware applied here
-
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 
 // Initialize Database

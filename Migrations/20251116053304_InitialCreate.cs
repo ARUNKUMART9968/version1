@@ -1,5 +1,6 @@
 ﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
@@ -15,15 +16,15 @@ namespace BoticAPI.Migrations
                 name: "BotJobs",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    TriggeredBy = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: false),
-                    TriggeredAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    TotalProcessed = table.Column<int>(type: "int", nullable: true),
-                    TotalSucceeded = table.Column<int>(type: "int", nullable: true),
-                    TotalFailed = table.Column<int>(type: "int", nullable: true),
-                    Details = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    TriggeredBy = table.Column<string>(type: "character varying(320)", maxLength: 320, nullable: false),
+                    TriggeredAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    Status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    TotalProcessed = table.Column<int>(type: "integer", nullable: true),
+                    TotalSucceeded = table.Column<int>(type: "integer", nullable: true),
+                    TotalFailed = table.Column<int>(type: "integer", nullable: true),
+                    Details = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -34,10 +35,10 @@ namespace BoticAPI.Migrations
                 name: "Roles",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    IsTechnical = table.Column<bool>(type: "bit", nullable: false)
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    Name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    IsTechnical = table.Column<bool>(type: "boolean", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -48,12 +49,12 @@ namespace BoticAPI.Migrations
                 name: "Users",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    Email = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: false),
-                    PasswordHash = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
-                    RoleId = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    Name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    Email = table.Column<string>(type: "character varying(320)", maxLength: 320, nullable: false),
+                    PasswordHash = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
+                    RoleId = table.Column<int>(type: "integer", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -70,15 +71,15 @@ namespace BoticAPI.Migrations
                 name: "Applications",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    ApplicantId = table.Column<int>(type: "int", nullable: false),
-                    RoleAppliedId = table.Column<int>(type: "int", nullable: false),
-                    CurrentStatus = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    LastBotRunAt = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    BotLockToken = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
-                    RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: true)
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    ApplicantId = table.Column<int>(type: "integer", nullable: false),
+                    RoleAppliedId = table.Column<int>(type: "integer", nullable: false),
+                    CurrentStatus = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    LastBotRunAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    BotLockToken = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    xmin = table.Column<uint>(type: "xid", rowVersion: true, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -101,15 +102,15 @@ namespace BoticAPI.Migrations
                 name: "ActivityLogs",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    ApplicationId = table.Column<int>(type: "int", nullable: false),
-                    OldStatus = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
-                    NewStatus = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    UpdatedBy = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: false),
-                    UpdatedByRole = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    Comment = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    ApplicationId = table.Column<int>(type: "integer", nullable: false),
+                    OldStatus = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    NewStatus = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    UpdatedBy = table.Column<string>(type: "character varying(320)", maxLength: 320, nullable: false),
+                    UpdatedByRole = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    Comment = table.Column<string>(type: "text", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
