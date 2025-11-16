@@ -15,7 +15,11 @@ RUN dotnet build -c Release -o /app/build
 # Stage 2: Publish
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS publish
 WORKDIR /app
-COPY --from=build /app/build .
+
+# Copy ALL built files from build stage
+COPY --from=build /app .
+
+# Publish the application
 RUN dotnet publish -c Release -o /app/publish
 
 # Stage 3: Runtime
