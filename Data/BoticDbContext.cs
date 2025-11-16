@@ -50,7 +50,7 @@ namespace BoticAPI.Data
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.CurrentStatus).IsRequired().HasMaxLength(100);
                 entity.Property(e => e.BotLockToken).HasMaxLength(50);
-                entity.UseXminAsConcurrencyToken();
+                entity.Property<uint>("xmin").IsRowVersion();
 
                 entity.HasOne(e => e.Applicant)
                     .WithMany(u => u.Applications)

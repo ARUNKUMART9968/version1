@@ -91,7 +91,7 @@ namespace BoticAPI.Services
                         await tx.CommitAsync();
                         succeeded++;
                     }
-                    catch (Exception ex)
+                    catch (Exception)
                     {
                         failed++;
                         app.BotLockToken = null;
