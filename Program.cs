@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -91,7 +91,7 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// Handle PORT for production
+// Handle PORT for production (Railway)
 if (builder.Environment.IsProduction())
 {
     var portVar = Environment.GetEnvironmentVariable("PORT");
@@ -122,7 +122,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-// Initialize Database
+// Initialize Database - WITH ERROR HANDLING
 try
 {
     using (var scope = app.Services.CreateScope())
@@ -130,20 +130,35 @@ try
         var dbContext = scope.ServiceProvider.GetRequiredService<BoticDbContext>();
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-        logger.LogInformation("Applying database migrations...");
-        dbContext.Database.Migrate();
+        // ✅ CHECK IF CONNECTION STRING EXISTS
+        var connectionString = configuration.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrEmpty(connectionString))
+        {
+            logger.LogError("❌ CONNECTION STRING IS NULL!");
+            logger.LogError("Make sure 'ConnectionStrings__DefaultConnection' is set in Railway Variables");
+            logger.LogError("Current environment: {environment}", app.Environment.EnvironmentName);
+        }
+        else
+        {
+            logger.LogInformation("✅ Connection string found");
+            logger.LogInformation("Applying database migrations...");
+            dbContext.Database.Migrate();
 
-        logger.LogInformation("Seeding database...");
-        SeedData.Initialize(dbContext);
+            logger.LogInformation("Seeding database...");
+            SeedData.Initialize(dbContext);
 
-        logger.LogInformation("Database initialization completed successfully");
+            logger.LogInformation("✅ Database initialization completed successfully");
+        }
     }
 }
 catch (Exception ex)
 {
     var logger = app.Services.GetRequiredService<ILogger<Program>>();
-    logger.LogError(ex, "An error occurred during database initialization");
-    throw;
+    logger.LogError(ex, "❌ An error occurred during database initialization");
+    if (!app.Environment.IsProduction())
+    {
+        throw;
+    }
 }
 
 app.Run();
