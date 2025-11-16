@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -64,7 +63,7 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Add Swagger/OpenAPI
+// Add Swagger/OpenAPI (enabled only in Development)
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -101,26 +100,7 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// Handle PORT for production (Render, Railway, and other platforms)
-if (!builder.Environment.IsDevelopment())
-{
-    var portVar = Environment.GetEnvironmentVariable("PORT");
-    if (!string.IsNullOrEmpty(portVar) && int.TryParse(portVar, out var port))
-    {
-        builder.WebHost.ConfigureKestrel(options =>
-        {
-            options.ListenAnyIP(port);
-        });
-    }
-}
-
 var app = builder.Build();
-
-// If behind Render or other proxy:
-app.UseForwardedHeaders(new ForwardedHeadersOptions
-{
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
-});
 
 // Optional: normalize multiple slashes in the incoming path (fixes //auth/login)
 app.Use(async (context, next) =>
@@ -149,7 +129,7 @@ app.UseCors("AllowAll");
 // Short-circuit OPTIONS preflight (optional safety - returns 204 quickly)
 app.Use(async (context, next) =>
 {
-    if (context.Request.Method == HttpMethods.Options)
+    if (context.Request.Method == Microsoft.AspNetCore.Http.HttpMethods.Options)
     {
         context.Response.StatusCode = StatusCodes.Status204NoContent;
         await context.Response.CompleteAsync();
@@ -161,8 +141,8 @@ app.Use(async (context, next) =>
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Swagger (visible in dev and prod)
-if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
+// Swagger available in Development only
+if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(c =>
@@ -174,15 +154,6 @@ if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 
 // Map controllers / endpoints
 app.MapControllers();
-
-// Health check endpoint for Render
-app.MapGet("/health", () =>
-{
-    return Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow });
-})
-.WithName("Health")
-.WithOpenApi()
-.AllowAnonymous();
 
 // Database initialization
 try
