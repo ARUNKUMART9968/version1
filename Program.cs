@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -12,9 +13,7 @@ var configuration = builder.Configuration;
 
 // Add DbContext - POSTGRESQL
 builder.Services.AddDbContext<BoticDbContext>(options =>
-    options.UseNpgsql(
-        configuration.GetConnectionString("DefaultConnection")
-    )
+    options.UseNpgsql(configuration.GetConnectionString("DefaultConnection"))
 );
 
 // Add application services
@@ -27,7 +26,6 @@ builder.Services.AddScoped<IDashboardService, DashboardService>();
 var jwtKey = configuration["Jwt:Key"];
 var jwtIssuer = configuration["Jwt:Issuer"];
 var jwtAudience = configuration["Jwt:Audience"];
-
 var key = Encoding.ASCII.GetBytes(jwtKey ?? string.Empty);
 
 builder.Services.AddAuthentication(x =>
@@ -55,19 +53,19 @@ builder.Services.AddAuthentication(x =>
 // Add Controllers
 builder.Services.AddControllers();
 
+// CORS - for debug AllowAnyOrigin; in production limit to your frontend origin(s)
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll",
-        builder =>
-        {
-            builder
-            .AllowAnyOrigin()
-            .AllowAnyMethod()
-            .AllowAnyHeader();
-        });
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
 });
 
 // Add Swagger/OpenAPI
+builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
@@ -118,7 +116,49 @@ if (builder.Environment.IsProduction())
 
 var app = builder.Build();
 
-// Middleware Configuration
+// If behind Railway or other proxy:
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
+// Optional: normalize multiple slashes in the incoming path (fixes //auth/login)
+app.Use(async (context, next) =>
+{
+    var p = context.Request.Path.Value;
+    if (!string.IsNullOrEmpty(p) && p.Contains("//"))
+    {
+        var newPath = System.Text.RegularExpressions.Regex.Replace(p, "/{2,}", "/");
+        context.Request.Path = new Microsoft.AspNetCore.Http.PathString(newPath);
+    }
+    await next();
+});
+
+// HTTPS redirect early (optional but recommended)
+app.UseHttpsRedirection();
+
+// MUST call UseRouting() before UseCors and before authentication/authorization
+app.UseRouting();
+
+// CORS - must come after UseRouting and before UseAuthentication/UseAuthorization
+app.UseCors("AllowAll");
+
+// Short-circuit OPTIONS preflight (optional safety - returns 204 quickly)
+app.Use(async (context, next) =>
+{
+    if (context.Request.Method == HttpMethods.Options)
+    {
+        context.Response.StatusCode = StatusCodes.Status204NoContent;
+        await context.Response.CompleteAsync();
+        return;
+    }
+    await next();
+});
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+// Swagger (visible in dev/prod per your existing condition)
 if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
     app.UseSwagger();
@@ -129,13 +169,10 @@ if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
     });
 }
 
-app.UseCors("AllowAll");
-app.UseHttpsRedirection();
-app.UseAuthentication();
-app.UseAuthorization();
+// Map controllers / endpoints
 app.MapControllers();
 
-// Initialize Database - WITH ERROR HANDLING
+// Database initialization (keep your existing code)
 try
 {
     using (var scope = app.Services.CreateScope())
@@ -143,7 +180,6 @@ try
         var dbContext = scope.ServiceProvider.GetRequiredService<BoticDbContext>();
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-        // ✅ CHECK IF CONNECTION STRING EXISTS
         var connectionString = configuration.GetConnectionString("DefaultConnection");
         if (string.IsNullOrEmpty(connectionString))
         {
