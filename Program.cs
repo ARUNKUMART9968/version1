@@ -12,7 +12,9 @@ var configuration = builder.Configuration;
 
 // Add DbContext - POSTGRESQL
 builder.Services.AddDbContext<BoticDbContext>(options =>
-    options.UseNpgsql(configuration.GetConnectionString("DefaultConnection"))
+    options.UseNpgsql(
+        configuration.GetConnectionString("DefaultConnection")
+    )
 );
 
 // Add application services
@@ -25,6 +27,7 @@ builder.Services.AddScoped<IDashboardService, DashboardService>();
 var jwtKey = configuration["Jwt:Key"];
 var jwtIssuer = configuration["Jwt:Issuer"];
 var jwtAudience = configuration["Jwt:Audience"];
+
 var key = Encoding.ASCII.GetBytes(jwtKey ?? string.Empty);
 
 builder.Services.AddAuthentication(x =>
@@ -34,7 +37,7 @@ builder.Services.AddAuthentication(x =>
 })
 .AddJwtBearer(x =>
 {
-    x.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
+    x.RequireHttpsMetadata = false;
     x.SaveToken = true;
     x.TokenValidationParameters = new TokenValidationParameters
     {
@@ -52,19 +55,7 @@ builder.Services.AddAuthentication(x =>
 // Add Controllers
 builder.Services.AddControllers();
 
-// CORS - for debug AllowAnyOrigin; in production limit to your frontend origin(s)
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowAll", policy =>
-    {
-        policy.AllowAnyOrigin()
-              .AllowAnyHeader()
-              .AllowAnyMethod();
-    });
-});
-
-// Add Swagger/OpenAPI (enabled only in Development)
-builder.Services.AddEndpointsApiExplorer();
+// Add Swagger/OpenAPI
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
@@ -100,49 +91,23 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-var app = builder.Build();
-
-// Optional: normalize multiple slashes in the incoming path (fixes //auth/login)
-app.Use(async (context, next) =>
+// Handle PORT for production (Railway)
+if (builder.Environment.IsProduction())
 {
-    var p = context.Request.Path.Value;
-    if (!string.IsNullOrEmpty(p) && p.Contains("//"))
+    var portVar = Environment.GetEnvironmentVariable("PORT");
+    if (portVar is { Length: > 0 } && int.TryParse(portVar, out var port))
     {
-        var newPath = System.Text.RegularExpressions.Regex.Replace(p, "/{2,}", "/");
-        context.Request.Path = new Microsoft.AspNetCore.Http.PathString(newPath);
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.ListenAnyIP(port);
+        });
     }
-    await next();
-});
-
-// HTTPS redirect early (optional but recommended for production)
-if (!app.Environment.IsDevelopment())
-{
-    app.UseHttpsRedirection();
 }
 
-// MUST call UseRouting() before UseCors and before authentication/authorization
-app.UseRouting();
+var app = builder.Build();
 
-// CORS - must come after UseRouting and before UseAuthentication/UseAuthorization
-app.UseCors("AllowAll");
-
-// Short-circuit OPTIONS preflight (optional safety - returns 204 quickly)
-app.Use(async (context, next) =>
-{
-    if (context.Request.Method == Microsoft.AspNetCore.Http.HttpMethods.Options)
-    {
-        context.Response.StatusCode = StatusCodes.Status204NoContent;
-        await context.Response.CompleteAsync();
-        return;
-    }
-    await next();
-});
-
-app.UseAuthentication();
-app.UseAuthorization();
-
-// Swagger available in Development only
-if (app.Environment.IsDevelopment())
+// Middleware Configuration
+if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
     app.UseSwagger();
     app.UseSwaggerUI(c =>
@@ -152,10 +117,12 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-// Map controllers / endpoints
+app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 
-// Database initialization
+// Initialize Database - WITH ERROR HANDLING
 try
 {
     using (var scope = app.Services.CreateScope())
@@ -163,45 +130,22 @@ try
         var dbContext = scope.ServiceProvider.GetRequiredService<BoticDbContext>();
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
+        // ✅ CHECK IF CONNECTION STRING EXISTS
         var connectionString = configuration.GetConnectionString("DefaultConnection");
         if (string.IsNullOrEmpty(connectionString))
         {
             logger.LogError("❌ CONNECTION STRING IS NULL!");
-            logger.LogError("Make sure 'ConnectionStrings__DefaultConnection' is set in environment variables");
+            logger.LogError("Make sure 'ConnectionStrings__DefaultConnection' is set in Railway Variables");
             logger.LogError("Current environment: {environment}", app.Environment.EnvironmentName);
-
-            if (!app.Environment.IsProduction())
-            {
-                throw new InvalidOperationException("Database connection string is required");
-            }
         }
         else
         {
             logger.LogInformation("✅ Connection string found");
             logger.LogInformation("Applying database migrations...");
-
-            try
-            {
-                dbContext.Database.Migrate();
-                logger.LogInformation("✅ Database migrations applied successfully");
-            }
-            catch (Exception migrationEx)
-            {
-                logger.LogError(migrationEx, "❌ Database migration failed");
-                throw;
-            }
+            dbContext.Database.Migrate();
 
             logger.LogInformation("Seeding database...");
-            try
-            {
-                SeedData.Initialize(dbContext);
-                logger.LogInformation("✅ Database seeding completed successfully");
-            }
-            catch (Exception seedEx)
-            {
-                logger.LogError(seedEx, "❌ Database seeding failed");
-                throw;
-            }
+            SeedData.Initialize(dbContext);
 
             logger.LogInformation("✅ Database initialization completed successfully");
         }
@@ -211,14 +155,9 @@ catch (Exception ex)
 {
     var logger = app.Services.GetRequiredService<ILogger<Program>>();
     logger.LogError(ex, "❌ An error occurred during database initialization");
-
     if (!app.Environment.IsProduction())
     {
         throw;
-    }
-    else
-    {
-        logger.LogError("Application will continue but database may not be properly initialized");
     }
 }
 
