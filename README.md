@@ -448,10 +448,5 @@ For issues or questions:
 
 ---
 
-## 📄 License
-
-This project is part of the Botic ATS platform.
-
----
 
 **Happy Coding! 🚀**
